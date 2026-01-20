@@ -18,14 +18,14 @@ The reference implementation of the [Agent Identity Protocol](../../spec/aip-v1a
 ### Install
 
 ```bash
-# From source
+# Quick install with Go
+go install github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/cmd/aip-proxy@latest
+
+# Or from source
 git clone https://github.com/ArangoGutierrez/agent-identity-protocol.git
 cd agent-identity-protocol/implementations/go-proxy
 make build
 ./bin/aip --help
-
-# Or with go install (after v1.0 release)
-go install github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/cmd/aip-proxy@latest
 ```
 
 ### Create a Policy
