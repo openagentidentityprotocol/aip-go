@@ -43,8 +43,7 @@ archives:
       {{- .Os }}_
       {{- .Arch }}
     files:
-      - src: ../../README.md
-      - src: ../../LICENSE
+      - README.md
       - examples/*
 
 checksum:
