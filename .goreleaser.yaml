@@ -121,18 +121,19 @@ release:
     
     **Documentation**: https://github.com/ArangoGutierrez/agent-identity-protocol#readme
 
-brews:
-  - name: aip
-    repository:
-      owner: ArangoGutierrez
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    skip_upload: auto
-    directory: Formula
-    homepage: https://github.com/ArangoGutierrez/agent-identity-protocol
-    description: "Agent Identity Protocol - Zero-trust security for AI agents"
-    license: Apache-2.0
-    test: |
-      system "#{bin}/aip", "--help"
-    install: |
-      bin.install "aip"
+# Homebrew tap publishing - disabled until homebrew-tap repo is created
+# brews:
+#   - name: aip
+#     repository:
+#       owner: ArangoGutierrez
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+#     skip_upload: auto
+#     directory: Formula
+#     homepage: https://github.com/ArangoGutierrez/agent-identity-protocol
+#     description: "Agent Identity Protocol - Zero-trust security for AI agents"
+#     license: Apache-2.0
+#     test: |
+#       system "#{bin}/aip", "--help"
+#     install: |
+#       bin.install "aip"
