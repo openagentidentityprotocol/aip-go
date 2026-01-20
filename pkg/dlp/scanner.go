@@ -468,17 +468,6 @@ func isPrintableString(s string) bool {
 	return float64(printable)/float64(len([]rune(s))) >= 0.8
 }
 
-// scanDecoded checks if any patterns match the decoded content.
-// Returns true if a secret was found.
-func (s *Scanner) scanDecoded(decoded string) bool {
-	for _, p := range s.patterns {
-		if p.regex.MatchString(decoded) {
-			return true
-		}
-	}
-	return false
-}
-
 // DetectsEncoding returns true if encoding detection is enabled.
 func (s *Scanner) DetectsEncoding() bool {
 	if s == nil {

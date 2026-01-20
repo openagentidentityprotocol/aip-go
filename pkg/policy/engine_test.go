@@ -1879,7 +1879,7 @@ spec:
 	if err := os.WriteFile(tmpFile, []byte(policyYAML), 0644); err != nil {
 		t.Fatalf("Failed to write temp policy: %v", err)
 	}
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	engine := NewEngine()
 	if err := engine.LoadFromFile(tmpFile); err != nil {
@@ -2039,7 +2039,7 @@ spec:
 	if err := os.WriteFile(tmpFile, []byte(policyYAML), 0644); err != nil {
 		t.Fatalf("Failed to write temp policy: %v", err)
 	}
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	engine := NewEngine()
 	if err := engine.LoadFromFile(tmpFile); err != nil {

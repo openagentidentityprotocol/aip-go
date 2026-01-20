@@ -1016,9 +1016,9 @@ func TestFilteredWriter_MultipleWrites(t *testing.T) {
 	filtered := NewFilteredWriter(&buf, scanner, nil, "")
 
 	// Multiple writes
-	filtered.Write([]byte("Line 1: secret_alpha\n"))
-	filtered.Write([]byte("Line 2: no secrets here\n"))
-	filtered.Write([]byte("Line 3: secret_beta\n"))
+	_, _ = filtered.Write([]byte("Line 1: secret_alpha\n"))
+	_, _ = filtered.Write([]byte("Line 2: no secrets here\n"))
+	_, _ = filtered.Write([]byte("Line 3: secret_beta\n"))
 
 	output := buf.String()
 
