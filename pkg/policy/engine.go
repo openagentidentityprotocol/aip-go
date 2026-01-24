@@ -94,7 +94,7 @@ type PolicySpec struct {
 
 	// DeniedTools is a list of tools that are explicitly forbidden.
 	// Takes precedence over AllowedTools (deny wins).
-	// TODO: Implement in v0.2
+	// Supports glob patterns: "github_*" denies all GitHub tools.
 	DeniedTools []string `yaml:"denied_tools,omitempty"`
 
 	// AllowedMethods specifies which JSON-RPC methods are permitted.
@@ -438,6 +438,11 @@ type Engine struct {
 	// Populated during Load() from policy.Spec.AllowedTools.
 	allowedSet map[string]struct{}
 
+	// deniedSet provides O(1) lookup for denied tools.
+	// Populated during Load() from policy.Spec.DeniedTools.
+	// Takes precedence over allowedSet (deny wins).
+	deniedSet map[string]struct{}
+
 	// toolRules provides O(1) lookup for tool-specific argument rules.
 	// Key = normalized tool name, Value = ToolRule with compiled regexes.
 	toolRules map[string]*ToolRule
@@ -543,6 +548,14 @@ func (e *Engine) Load(data []byte) error {
 	for _, tool := range policy.Spec.AllowedTools {
 		normalized := NormalizeName(tool)
 		e.allowedSet[normalized] = struct{}{}
+	}
+
+	// Build the denied set for O(1) lookups
+	// Deny takes precedence over allow
+	e.deniedSet = make(map[string]struct{}, len(policy.Spec.DeniedTools))
+	for _, tool := range policy.Spec.DeniedTools {
+		normalized := NormalizeName(tool)
+		e.deniedSet[normalized] = struct{}{}
 	}
 
 	// Compile tool rules with regex patterns and initialize rate limiters
@@ -921,7 +934,12 @@ func (e *Engine) IsAllowed(toolName string, args map[string]any) Decision {
 		}
 	}
 
-	// Step 1: Check if tool has a specific rule with action
+	// Step 1: Check if tool is in denied_tools list (deny wins over allow)
+	if _, denied := e.deniedSet[normalized]; denied {
+		return e.makeDecision(false, "tool in denied_tools list", "", "")
+	}
+
+	// Step 2: Check if tool has a specific rule with action
 	rule, hasRule := e.toolRules[normalized]
 	if hasRule {
 		// Check action type first
@@ -970,12 +988,12 @@ func (e *Engine) IsAllowed(toolName string, args map[string]any) Decision {
 		// action="allow" falls through to normal validation
 	}
 
-	// Step 2: Check if tool is in allowed list
+	// Step 3: Check if tool is in allowed list
 	if _, allowed := e.allowedSet[normalized]; !allowed {
 		return e.makeDecision(false, "tool not in allowed_tools list", "", "")
 	}
 
-	// Step 3: Check for argument-level rules (for action=allow)
+	// Step 4: Check for argument-level rules (for action=allow)
 	if !hasRule || len(rule.compiledArgs) == 0 {
 		// No argument rules = implicit allow all args
 		return Decision{
@@ -986,7 +1004,7 @@ func (e *Engine) IsAllowed(toolName string, args map[string]any) Decision {
 		}
 	}
 
-	// Step 4: Validate each constrained argument
+	// Step 5: Validate each constrained argument
 	for argName, compiledRegex := range rule.compiledArgs {
 		argValue, exists := args[argName]
 		if !exists {
@@ -1004,7 +1022,7 @@ func (e *Engine) IsAllowed(toolName string, args map[string]any) Decision {
 		}
 	}
 
-	// Step 5: Strict args mode - reject undeclared arguments
+	// Step 6: Strict args mode - reject undeclared arguments
 	// This prevents bypass attacks via extra arguments (e.g., headers, metadata)
 	if e.isStrictArgs(rule) && len(args) > 0 {
 		for argName := range args {
@@ -1146,6 +1164,16 @@ func (e *Engine) GetAllowedTools() []string {
 	}
 	result := make([]string, len(e.policy.Spec.AllowedTools))
 	copy(result, e.policy.Spec.AllowedTools)
+	return result
+}
+
+// GetDeniedTools returns a copy of the denied tools list for inspection.
+func (e *Engine) GetDeniedTools() []string {
+	if e.policy == nil {
+		return nil
+	}
+	result := make([]string, len(e.policy.Spec.DeniedTools))
+	copy(result, e.policy.Spec.DeniedTools)
 	return result
 }
 

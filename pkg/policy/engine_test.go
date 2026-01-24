@@ -128,6 +128,108 @@ spec:
 	}
 }
 
+// TestDeniedToolsTakesPrecedence tests that denied_tools blocks tools
+// even if they are in allowed_tools (deny wins over allow).
+func TestDeniedToolsTakesPrecedence(t *testing.T) {
+	policyYAML := `
+apiVersion: aip.io/v1alpha1
+kind: AgentPolicy
+metadata:
+  name: denied-tools-test
+spec:
+  allowed_tools:
+    - safe_tool
+    - dangerous_tool
+  denied_tools:
+    - dangerous_tool
+    - never_allow
+`
+
+	engine := NewEngine()
+	if err := engine.Load([]byte(policyYAML)); err != nil {
+		t.Fatalf("Failed to load policy: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		tool        string
+		wantAllowed bool
+		wantReason  string
+	}{
+		{
+			name:        "Tool only in allowed_tools should pass",
+			tool:        "safe_tool",
+			wantAllowed: true,
+		},
+		{
+			name:        "Tool in both allowed and denied should be blocked (deny wins)",
+			tool:        "dangerous_tool",
+			wantAllowed: false,
+			wantReason:  "denied_tools",
+		},
+		{
+			name:        "Tool only in denied_tools should be blocked",
+			tool:        "never_allow",
+			wantAllowed: false,
+			wantReason:  "denied_tools",
+		},
+		{
+			name:        "Tool not in any list should be blocked",
+			tool:        "unknown_tool",
+			wantAllowed: false,
+			wantReason:  "allowed_tools",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := engine.IsAllowed(tt.tool, nil)
+			if result.Allowed != tt.wantAllowed {
+				t.Errorf("IsAllowed(%q) = %v, want %v (reason: %s)",
+					tt.tool, result.Allowed, tt.wantAllowed, result.Reason)
+			}
+			if tt.wantReason != "" && !strings.Contains(result.Reason, tt.wantReason) {
+				t.Errorf("Reason = %q, want to contain %q", result.Reason, tt.wantReason)
+			}
+		})
+	}
+}
+
+// TestGetDeniedTools tests the GetDeniedTools accessor method.
+func TestGetDeniedTools(t *testing.T) {
+	policyYAML := `
+apiVersion: aip.io/v1alpha1
+kind: AgentPolicy
+metadata:
+  name: denied-tools-accessor-test
+spec:
+  allowed_tools:
+    - some_tool
+  denied_tools:
+    - tool_a
+    - tool_b
+`
+
+	engine := NewEngine()
+	if err := engine.Load([]byte(policyYAML)); err != nil {
+		t.Fatalf("Failed to load policy: %v", err)
+	}
+
+	denied := engine.GetDeniedTools()
+	if len(denied) != 2 {
+		t.Fatalf("GetDeniedTools() returned %d tools, want 2", len(denied))
+	}
+
+	// Check that both tools are present
+	found := make(map[string]bool)
+	for _, tool := range denied {
+		found[tool] = true
+	}
+	if !found["tool_a"] || !found["tool_b"] {
+		t.Errorf("GetDeniedTools() = %v, want [tool_a, tool_b]", denied)
+	}
+}
+
 // TestToolWithNoArgRulesAllowsAllArgs tests that tools in tool_rules
 // without allow_args allow all arguments.
 func TestToolWithNoArgRulesAllowsAllArgs(t *testing.T) {
