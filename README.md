@@ -13,6 +13,13 @@ The reference implementation of the [Agent Identity Protocol](../../spec/aip-v1a
 - **Audit logging** — Immutable JSONL trail of all decisions
 - **Monitor mode** — Test policies without enforcement
 
+### v1alpha2 Features (New)
+
+- **Identity tokens** — Cryptographic session identity with automatic rotation
+- **Server-side validation** — HTTP endpoints for distributed policy enforcement
+- **Policy signatures** — Ed25519 signatures for policy integrity
+- **Prometheus metrics** — `/metrics` endpoint for observability
+
 ## Quick Start
 
 ### Install
@@ -46,6 +53,32 @@ spec:
       action: ask    # Require approval
     - tool: exec_command
       action: block  # Never allow
+```
+
+### v1alpha2 Policy with Identity & Server
+
+```yaml
+# policy-v1alpha2.yaml
+apiVersion: aip.io/v1alpha2
+kind: AgentPolicy
+metadata:
+  name: enterprise-agent
+spec:
+  allowed_tools:
+    - read_file
+    - write_file
+  identity:
+    enabled: true
+    token_ttl: "10m"
+    rotation_interval: "8m"
+    require_token: true
+    session_binding: "strict"
+  server:
+    enabled: true
+    listen: "127.0.0.1:9443"
+    # tls:
+    #   cert: "/etc/aip/cert.pem"
+    #   key: "/etc/aip/key.pem"
 ```
 
 ### Run
@@ -87,7 +120,8 @@ Add the output to `~/.cursor/mcp.json`.
 | [Architecture](docs/architecture.md) | Deep dive into proxy design |
 | [Integration Guide](docs/integration-guide.md) | Cursor, VS Code, Claude Desktop setup |
 | [Policy Reference](../../docs/policy-reference.md) | Complete YAML schema |
-| [AIP Specification](../../spec/aip-v1alpha1.md) | Formal protocol spec |
+| [AIP v1alpha1 Spec](../../spec/aip-v1alpha1.md) | Original protocol spec |
+| [AIP v1alpha2 Spec](../../spec/aip-v1alpha2.md) | Identity & server-side validation |
 
 ## Examples
 
@@ -98,6 +132,7 @@ See [`examples/`](examples/) for ready-to-use policies:
 - `gpu-policy.yaml` — GPU/ML workload controls
 - `gemini-jack-defense.yaml` — Prompt injection mitigation
 - `monitor-mode.yaml` — Dry-run testing
+- `identity-server.yaml` — v1alpha2 identity tokens + HTTP server
 
 ## Architecture
 

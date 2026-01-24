@@ -73,6 +73,10 @@ type PolicyMetadata struct {
 
 	// Owner is the team/person responsible for this policy.
 	Owner string `yaml:"owner,omitempty"`
+
+	// Signature is the cryptographic signature for policy integrity (v1alpha2).
+	// Format: "<algorithm>:<base64-signature>"
+	Signature string `yaml:"signature,omitempty"`
 }
 
 // PolicySpec contains the actual authorization rules.
@@ -150,6 +154,64 @@ type PolicySpec struct {
 	// and redacts sensitive information (PII, API keys, secrets) before
 	// forwarding to the client.
 	DLP *DLPConfig `yaml:"dlp,omitempty"`
+
+	// Identity configures agent identity tokens and session management (v1alpha2).
+	Identity *IdentityConfig `yaml:"identity,omitempty"`
+
+	// Server configures HTTP endpoints for server-side validation (v1alpha2).
+	Server *ServerConfig `yaml:"server,omitempty"`
+}
+
+// IdentityConfig holds the identity configuration for v1alpha2.
+// Maps to spec.identity in the policy YAML.
+type IdentityConfig struct {
+	// Enabled controls whether identity token generation is active.
+	Enabled bool `yaml:"enabled,omitempty"`
+
+	// TokenTTL is the time-to-live for identity tokens.
+	// Format: Go duration string (e.g., "5m", "1h", "300s")
+	TokenTTL string `yaml:"token_ttl,omitempty"`
+
+	// RotationInterval is how often to rotate tokens before expiry.
+	RotationInterval string `yaml:"rotation_interval,omitempty"`
+
+	// RequireToken when true requires all tool calls to include a valid token.
+	RequireToken bool `yaml:"require_token,omitempty"`
+
+	// SessionBinding determines what context is bound to the session identity.
+	// Values: "process", "policy", "strict"
+	SessionBinding string `yaml:"session_binding,omitempty"`
+}
+
+// ServerConfig holds the HTTP server configuration for v1alpha2.
+// Maps to spec.server in the policy YAML.
+type ServerConfig struct {
+	// Enabled controls whether the HTTP server is active.
+	Enabled bool `yaml:"enabled,omitempty"`
+
+	// Listen is the address and port to bind.
+	Listen string `yaml:"listen,omitempty"`
+
+	// TLS configures HTTPS.
+	TLS *TLSConfig `yaml:"tls,omitempty"`
+
+	// Endpoints configures custom endpoint paths.
+	Endpoints *EndpointsConfig `yaml:"endpoints,omitempty"`
+}
+
+// TLSConfig holds TLS configuration.
+type TLSConfig struct {
+	Cert              string `yaml:"cert,omitempty"`
+	Key               string `yaml:"key,omitempty"`
+	ClientCA          string `yaml:"client_ca,omitempty"`
+	RequireClientCert bool   `yaml:"require_client_cert,omitempty"`
+}
+
+// EndpointsConfig holds custom endpoint paths.
+type EndpointsConfig struct {
+	Validate string `yaml:"validate,omitempty"`
+	Health   string `yaml:"health,omitempty"`
+	Metrics  string `yaml:"metrics,omitempty"`
 }
 
 // DLPConfig configures Data Loss Prevention (output redaction) rules.
@@ -366,6 +428,12 @@ type Engine struct {
 	// policy holds the parsed agent.yaml configuration.
 	policy *AgentPolicy
 
+	// policyData holds the raw policy bytes for hash computation.
+	policyData []byte
+
+	// policyPath holds the path to the policy file.
+	policyPath string
+
 	// allowedSet provides O(1) lookup for allowed tools.
 	// Populated during Load() from policy.Spec.AllowedTools.
 	allowedSet map[string]struct{}
@@ -465,6 +533,9 @@ func (e *Engine) Load(data []byte) error {
 	if policy.Kind != "AgentPolicy" {
 		return fmt.Errorf("unexpected kind %q, expected AgentPolicy", policy.Kind)
 	}
+
+	// Store raw policy data for hash computation (v1alpha2)
+	e.policyData = data
 
 	// Build the allowed set for O(1) lookups
 	// Use NormalizeName for Unicode-safe, case-insensitive matching
@@ -578,16 +649,54 @@ func (e *Engine) LoadFromFile(path string) error {
 		return err
 	}
 
-	// Add the policy file itself to protected paths (always protected)
+	// Store policy path for identity management (v1alpha2)
 	absPath, err := filepath.Abs(path)
 	if err == nil {
+		e.policyPath = absPath
 		e.protectedPaths = append(e.protectedPaths, absPath)
 	} else {
 		// Fallback to original path if abs fails
+		e.policyPath = path
 		e.protectedPaths = append(e.protectedPaths, path)
 	}
 
 	return nil
+}
+
+// GetPolicyData returns the raw policy bytes for hash computation.
+func (e *Engine) GetPolicyData() []byte {
+	return e.policyData
+}
+
+// GetPolicyPath returns the path to the policy file.
+func (e *Engine) GetPolicyPath() string {
+	return e.policyPath
+}
+
+// GetIdentityConfig returns the identity configuration.
+// Returns nil if no identity config is defined.
+func (e *Engine) GetIdentityConfig() *IdentityConfig {
+	if e.policy == nil {
+		return nil
+	}
+	return e.policy.Spec.Identity
+}
+
+// GetServerConfig returns the server configuration.
+// Returns nil if no server config is defined.
+func (e *Engine) GetServerConfig() *ServerConfig {
+	if e.policy == nil {
+		return nil
+	}
+	return e.policy.Spec.Server
+}
+
+// GetAPIVersion returns the policy API version.
+func (e *Engine) GetAPIVersion() string {
+	if e.policy == nil {
+		return ""
+	}
+	return e.policy.APIVersion
 }
 
 // expandPath expands ~ to home directory and resolves to absolute path.

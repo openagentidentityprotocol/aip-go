@@ -65,8 +65,10 @@ import (
 
 	"github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/pkg/audit"
 	"github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/pkg/dlp"
+	"github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/pkg/identity"
 	"github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/pkg/policy"
 	"github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/pkg/protocol"
+	"github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/pkg/server"
 	"github.com/ArangoGutierrez/agent-identity-protocol/implementations/go-proxy/pkg/ui"
 )
 
@@ -201,9 +203,43 @@ func main() {
 	if err := engine.LoadFromFile(cfg.PolicyPath); err != nil {
 		logger.Fatalf("Failed to load policy: %v", err)
 	}
-	logger.Printf("Loaded policy: %s", engine.GetPolicyName())
+	logger.Printf("Loaded policy: %s (API version: %s)", engine.GetPolicyName(), engine.GetAPIVersion())
 	logger.Printf("Allowed tools: %v", engine.GetAllowedTools())
 	logger.Printf("Policy mode: %s", engine.GetMode())
+
+	// Initialize identity manager if configured (v1alpha2)
+	var identityManager *identity.Manager
+	if identityCfg := engine.GetIdentityConfig(); identityCfg != nil && identityCfg.Enabled {
+		idConfig := &identity.Config{
+			Enabled:          identityCfg.Enabled,
+			TokenTTL:         identityCfg.TokenTTL,
+			RotationInterval: identityCfg.RotationInterval,
+			RequireToken:     identityCfg.RequireToken,
+			SessionBinding:   identityCfg.SessionBinding,
+		}
+
+		var err error
+		identityManager, err = identity.NewManager(
+			engine.GetPolicyName(),
+			engine.GetPolicyPath(),
+			engine.GetPolicyData(),
+			idConfig,
+		)
+		if err != nil {
+			logger.Fatalf("Failed to initialize identity manager: %v", err)
+		}
+
+		// Set up token event logging
+		identityManager.OnTokenIssued(func(token *identity.Token) {
+			logger.Printf("Identity token issued: session=%s, expires=%s", token.SessionID, token.ExpiresAt)
+		})
+		identityManager.OnTokenRotated(func(oldToken, newToken *identity.Token) {
+			logger.Printf("Identity token rotated: session=%s, new_expiry=%s", newToken.SessionID, newToken.ExpiresAt)
+		})
+
+		logger.Printf("Identity management enabled: session=%s, require_token=%v",
+			identityManager.GetSessionID(), idConfig.RequireToken)
+	}
 
 	// Initialize audit logger (writes to file, NEVER stdout)
 	auditMode := audit.PolicyModeEnforce
@@ -224,12 +260,58 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Start identity manager if enabled (v1alpha2)
+	if identityManager != nil {
+		if err := identityManager.Start(ctx); err != nil {
+			logger.Fatalf("Failed to start identity manager: %v", err)
+		}
+		defer identityManager.Stop()
+	}
+
+	// Start HTTP server if enabled (v1alpha2)
+	var httpServer *server.Server
+	if serverCfg := engine.GetServerConfig(); serverCfg != nil && serverCfg.Enabled {
+		srvConfig := &server.Config{
+			Enabled: serverCfg.Enabled,
+			Listen:  serverCfg.Listen,
+		}
+		if serverCfg.TLS != nil {
+			srvConfig.TLS = &server.TLSConfig{
+				Cert:              serverCfg.TLS.Cert,
+				Key:               serverCfg.TLS.Key,
+				ClientCA:          serverCfg.TLS.ClientCA,
+				RequireClientCert: serverCfg.TLS.RequireClientCert,
+			}
+		}
+		if serverCfg.Endpoints != nil {
+			srvConfig.Endpoints = &server.EndpointsConfig{
+				Validate: serverCfg.Endpoints.Validate,
+				Health:   serverCfg.Endpoints.Health,
+				Metrics:  serverCfg.Endpoints.Metrics,
+			}
+		}
+
+		var err error
+		httpServer, err = server.NewServer(srvConfig, engine, identityManager, logger)
+		if err != nil {
+			logger.Fatalf("Failed to create HTTP server: %v", err)
+		}
+		if err := httpServer.Start(); err != nil {
+			logger.Fatalf("Failed to start HTTP server: %v", err)
+		}
+		defer func() {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			_ = httpServer.Stop(shutdownCtx)
+		}()
+	}
+
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 	// Start the subprocess
-	proxy, err := NewProxy(ctx, cfg, engine, logger, auditLogger)
+	proxy, err := NewProxy(ctx, cfg, engine, logger, auditLogger, identityManager)
 	if err != nil {
 		logger.Fatalf("Failed to start proxy: %v", err)
 	}
@@ -340,14 +422,16 @@ func generateCursorConfig(cfg *Config) {
 //  5. Prompts user for approval on action="ask" rules (Human-in-the-Loop)
 //  6. Scans downstream responses for sensitive data (DLP) and redacts
 //  7. Logs all decisions to the audit log file (NEVER stdout)
+//  8. Validates identity tokens if configured (v1alpha2)
 type Proxy struct {
-	ctx         context.Context
-	cfg         *Config
-	engine      *policy.Engine
-	logger      *log.Logger
-	auditLogger *audit.Logger
-	prompter    *ui.Prompter
-	dlpScanner  *dlp.Scanner
+	ctx             context.Context
+	cfg             *Config
+	engine          *policy.Engine
+	logger          *log.Logger
+	auditLogger     *audit.Logger
+	prompter        *ui.Prompter
+	dlpScanner      *dlp.Scanner
+	identityManager *identity.Manager // v1alpha2
 
 	// cmd is the subprocess running the target MCP server
 	cmd *exec.Cmd
@@ -377,7 +461,7 @@ type Proxy struct {
 //
 // The subprocess inherits our stderr for error output visibility.
 // The auditLogger is used to record all policy decisions to a file.
-func NewProxy(ctx context.Context, cfg *Config, engine *policy.Engine, logger *log.Logger, auditLogger *audit.Logger) (*Proxy, error) {
+func NewProxy(ctx context.Context, cfg *Config, engine *policy.Engine, logger *log.Logger, auditLogger *audit.Logger, identityManager *identity.Manager) (*Proxy, error) {
 	// Parse the target command
 	// Simple space-split; doesn't handle quoted args (use shell wrapper if needed)
 	parts := strings.Fields(cfg.Target)
@@ -442,16 +526,17 @@ func NewProxy(ctx context.Context, cfg *Config, engine *policy.Engine, logger *l
 	logger.Printf("Started subprocess PID %d: %s", cmd.Process.Pid, cfg.Target)
 
 	return &Proxy{
-		ctx:         ctx,
-		cfg:         cfg,
-		engine:      engine,
-		logger:      logger,
-		auditLogger: auditLogger,
-		prompter:    prompter,
-		dlpScanner:  dlpScanner,
-		cmd:         cmd,
-		subStdin:    subStdin,
-		subStdout:   subStdout,
+		ctx:             ctx,
+		cfg:             cfg,
+		engine:          engine,
+		logger:          logger,
+		auditLogger:     auditLogger,
+		prompter:        prompter,
+		dlpScanner:      dlpScanner,
+		identityManager: identityManager,
+		cmd:             cmd,
+		subStdin:        subStdin,
+		subStdout:       subStdout,
 	}, nil
 }
 

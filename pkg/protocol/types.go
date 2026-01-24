@@ -150,6 +150,18 @@ const (
 	// This is a security-critical error indicating potential policy tampering
 	// or credential theft attempt.
 	ErrCodeProtectedPath = -32007
+
+	// ErrCodeTokenRequired indicates an identity token is required but not provided.
+	// New in AIP v1alpha2.
+	ErrCodeTokenRequired = -32008
+
+	// ErrCodeTokenInvalid indicates the identity token validation failed.
+	// New in AIP v1alpha2.
+	ErrCodeTokenInvalid = -32009
+
+	// ErrCodePolicySignatureInvalid indicates the policy signature is invalid.
+	// New in AIP v1alpha2.
+	ErrCodePolicySignatureInvalid = -32010
 )
 
 // -----------------------------------------------------------------------------
@@ -306,6 +318,64 @@ func NewProtectedPathError(requestID json.RawMessage, toolName, protectedPath st
 			Data: map[string]string{
 				"tool":   toolName,
 				"reason": "The requested operation would access a protected path. This action has been blocked and logged for security review.",
+			},
+		},
+	}
+}
+
+// NewTokenRequiredError creates a JSON-RPC error response when identity token is required.
+//
+// This is used when spec.identity.require_token is true and no token was provided.
+// New in AIP v1alpha2.
+func NewTokenRequiredError(requestID json.RawMessage, toolName string) *Response {
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      requestID,
+		Error: &Error{
+			Code:    ErrCodeTokenRequired,
+			Message: "Token required",
+			Data: map[string]string{
+				"tool":   toolName,
+				"reason": "Identity token required for this policy",
+			},
+		},
+	}
+}
+
+// NewTokenInvalidError creates a JSON-RPC error response when token validation fails.
+//
+// This is used when a token is provided but fails validation (expired, policy changed, etc.).
+// New in AIP v1alpha2.
+func NewTokenInvalidError(requestID json.RawMessage, toolName, tokenError string) *Response {
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      requestID,
+		Error: &Error{
+			Code:    ErrCodeTokenInvalid,
+			Message: "Token invalid",
+			Data: map[string]string{
+				"tool":        toolName,
+				"reason":      "Token validation failed: " + tokenError,
+				"token_error": tokenError,
+			},
+		},
+	}
+}
+
+// NewPolicySignatureError creates a JSON-RPC error response when policy signature is invalid.
+//
+// This is used when the policy file has a signature that doesn't verify.
+// New in AIP v1alpha2.
+func NewPolicySignatureError(requestID json.RawMessage, policyName string) *Response {
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      requestID,
+		Error: &Error{
+			Code:    ErrCodePolicySignatureInvalid,
+			Message: "Policy signature invalid",
+			Data: map[string]string{
+				"policy": policyName,
+				"reason": "Policy signature verification failed",
 			},
 		},
 	}
