@@ -32,14 +32,14 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: implementations/go-proxy/go.sum
+          cache-dependency-path: ./go.sum
 
       - name: Build
-        working-directory: implementations/go-proxy
+        working-directory: ./
         run: make build
 
       - name: Verify binary exists
-        run: test -f implementations/go-proxy/bin/aip
+        run: test -f ./bin/aip
 
   test:
     name: Test
@@ -52,16 +52,16 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: implementations/go-proxy/go.sum
+          cache-dependency-path: ./go.sum
 
       - name: Run tests
-        working-directory: implementations/go-proxy
+        working-directory: ./
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
         with:
-          files: implementations/go-proxy/coverage.out
+          files: ./coverage.out
           flags: unittests
           fail_ci_if_error: false
 
@@ -76,14 +76,14 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: implementations/go-proxy/go.sum
+          cache-dependency-path: ./go.sum
 
       - name: Run go vet
-        working-directory: implementations/go-proxy
+        working-directory: ./
         run: go vet ./...
 
       - name: Check formatting
-        working-directory: implementations/go-proxy
+        working-directory: ./
         run: |
           if [ -n "$(gofmt -l .)" ]; then
             echo "Code is not formatted. Run 'gofmt -w .'"
@@ -95,7 +95,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: latest
-          working-directory: implementations/go-proxy
+          working-directory: ./
           args: --timeout=5m
 
   security:
@@ -109,10 +109,10 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: implementations/go-proxy/go.sum
+          cache-dependency-path: ./go.sum
 
       - name: Run govulncheck
-        working-directory: implementations/go-proxy
+        working-directory: ./
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
