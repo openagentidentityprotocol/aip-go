@@ -1,6 +1,6 @@
 # AIP Go Proxy
 
-The reference implementation of the [Agent Identity Protocol](https://github.com/openagentidentityprotocol/agentidentityprotocol/spec/aip-v1alpha1.md) — a policy enforcement proxy for MCP (Model Context Protocol).
+The reference implementation of the [Agent Identity Protocol](https://github.com/openagentidentityprotocol/agentidentityprotocol/blob/main/spec/aip-v1alpha1.md) — a policy enforcement proxy for MCP (Model Context Protocol).
 
 **"Sudo for AI Agents"**
 
@@ -118,9 +118,9 @@ Add the output to `~/.cursor/mcp.json`.
 | [Quickstart](docs/quickstart.md) | Step-by-step tutorial with echo server |
 | [Architecture](docs/architecture.md) | Deep dive into proxy design |
 | [Integration Guide](docs/integration-guide.md) | Cursor, VS Code, Claude Desktop setup |
-| [Policy Reference](https://github.com/openagentidentityprotocol/agentidentityprotocol/docs/policy-reference.md) | Complete YAML schema |
-| [AIP v1alpha1 Spec](https://github.com/openagentidentityprotocol/agentidentityprotocol/spec/aip-v1alpha1.md) | Original protocol spec |
-| [AIP v1alpha2 Spec](https://github.com/openagentidentityprotocol/agentidentityprotocol/spec/aip-v1alpha2.md) | Identity & server-side validation |
+| [Policy Reference](https://github.com/openagentidentityprotocol/agentidentityprotocol/blob/main/docs/policy-reference.md) | Complete YAML schema |
+| [AIP v1alpha1 Spec](https://github.com/openagentidentityprotocol/agentidentityprotocol/blob/main/spec/aip-v1alpha1.md) | Original protocol spec |
+| [AIP v1alpha2 Spec](https://github.com/openagentidentityprotocol/agentidentityprotocol/blob/main/spec/aip-v1alpha2.md) | Identity & server-side validation |
 
 ## Examples
 
